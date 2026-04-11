@@ -13,23 +13,48 @@ export default function LoginPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data } = await supabase.auth.getUser()
+  /* ----------------------------------
+     ROLE-BASED REDIRECTION
+  ---------------------------------- */
+  const handleUserRedirect = async () => {
+    const { data: userData } = await supabase.auth.getUser()
 
-      if (data.user) {
-        router.push("/home")
-      }
-
+    if (!userData.user) {
       setLoading(false)
+      return
     }
 
-    checkUser()
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userData.user.id)
+      .single()
+
+    if (error || !profile) {
+      console.error("Profile fetch error:", error)
+      setLoading(false)
+      return
+    }
+
+    const role = profile.role
+
+    if (role === "guidance") {
+      router.push("/guidance")
+    } else {
+      router.push("/home") // default student
+    }
+  }
+
+  /* ----------------------------------
+     CHECK USER ON LOAD
+  ---------------------------------- */
+  useEffect(() => {
+    handleUserRedirect()
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_, session) => {
+      async (_, session) => {
         if (session?.user) {
-          router.push("/home")
+          await handleUserRedirect()
         }
       }
     )
@@ -37,14 +62,18 @@ export default function LoginPage() {
     return () => {
       listener.subscription.unsubscribe()
     }
-  }, [router])
+  }, [])
 
+  /* ----------------------------------
+     MICROSOFT LOGIN
+  ---------------------------------- */
   const signInWithMicrosoft = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
         scopes: "openid profile email",
-        redirectTo: "http://localhost:3000/home",
+        redirectTo: "http://localhost:3000/api/auth/callback", 
+        // redirect back here → we handle role routing after login
       },
     })
   }
@@ -58,7 +87,6 @@ export default function LoginPage() {
       <div className="w-full bg-white border-b px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-yellow-400 rounded-lg flex items-center justify-center font-bold">
-            
           </div>
           <span className="font-semibold text-blue-900 text-lg">
             STI Guidance
@@ -72,12 +100,12 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Main Login Section */}
+      {/* Main Section */}
       <div className="flex flex-1 items-center justify-center px-6">
 
         <div className="grid md:grid-cols-2 gap-12 max-w-6xl w-full items-center">
 
-          {/* Left Info Section */}
+          {/* LEFT INFO */}
           <div className="space-y-6">
 
             <Badge className="bg-yellow-400 text-black">
@@ -93,9 +121,8 @@ export default function LoginPage() {
 
             <p className="text-gray-600 max-w-md">
               Access the Guidance Counseling Appointment System using
-              your official Microsoft student account to book sessions,
-              monitor appointments, and receive support from the
-              Guidance Office.
+              your official Microsoft account to book sessions,
+              monitor appointments, and receive support.
             </p>
 
             <Separator />
@@ -108,7 +135,7 @@ export default function LoginPage() {
                     Confidential
                   </p>
                   <p className="text-sm text-gray-500">
-                    All counseling sessions are handled with strict privacy.
+                    Sessions are handled with strict privacy.
                   </p>
                 </CardContent>
               </Card>
@@ -119,7 +146,7 @@ export default function LoginPage() {
                     Easy Scheduling
                   </p>
                   <p className="text-sm text-gray-500">
-                    Book appointments with the guidance office online.
+                    Book appointments online.
                   </p>
                 </CardContent>
               </Card>
@@ -130,7 +157,7 @@ export default function LoginPage() {
                     Student Support
                   </p>
                   <p className="text-sm text-gray-500">
-                    Academic, personal, and career guidance resources.
+                    Academic & personal guidance.
                   </p>
                 </CardContent>
               </Card>
@@ -141,16 +168,15 @@ export default function LoginPage() {
                     Secure Login
                   </p>
                   <p className="text-sm text-gray-500">
-                    Sign in using your official STI Microsoft account.
+                    Microsoft account authentication.
                   </p>
                 </CardContent>
               </Card>
 
             </div>
-
           </div>
 
-          {/* Login Card */}
+          {/* LOGIN CARD */}
           <Card className="w-full max-w-md mx-auto shadow-lg">
 
             <CardHeader>
@@ -162,8 +188,7 @@ export default function LoginPage() {
             <CardContent className="flex flex-col gap-5">
 
               <p className="text-sm text-gray-500 text-center">
-                Sign in using your official STI Microsoft account
-                to continue.
+                Sign in using your official STI Microsoft account.
               </p>
 
               <Button
@@ -174,8 +199,7 @@ export default function LoginPage() {
               </Button>
 
               <p className="text-xs text-gray-400 text-center">
-                By signing in, you agree to the STI Guidance Office
-                privacy and confidentiality policies.
+                By signing in, you agree to STI Guidance policies.
               </p>
 
             </CardContent>
