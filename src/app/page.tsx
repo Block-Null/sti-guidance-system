@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useEffectEvent, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { getHomePathForRole, normalizeRole } from "@/lib/roles"
 import { useRouter } from "next/navigation"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,7 +17,7 @@ export default function LoginPage() {
   /* ----------------------------------
      ROLE-BASED REDIRECTION
   ---------------------------------- */
-  const handleUserRedirect = async () => {
+  const handleUserRedirect = useEffectEvent(async () => {
     const { data: userData } = await supabase.auth.getUser()
 
     if (!userData.user) {
@@ -36,20 +37,15 @@ export default function LoginPage() {
       return
     }
 
-    const role = profile.role
-
-    if (role === "guidance") {
-      router.push("/guidance")
-    } else {
-      router.push("/home") // default student
-    }
-  }
+    const role = normalizeRole(profile.role)
+    router.push(getHomePathForRole(role))
+  })
 
   /* ----------------------------------
      CHECK USER ON LOAD
   ---------------------------------- */
   useEffect(() => {
-    handleUserRedirect()
+    void handleUserRedirect()
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (_, session) => {
@@ -72,8 +68,7 @@ export default function LoginPage() {
       provider: "azure",
       options: {
         scopes: "openid profile email",
-        redirectTo: "http://localhost:3000/api/auth/callback", 
-        // redirect back here → we handle role routing after login
+        redirectTo: `${window.location.origin}/api/auth/callback`,
       },
     })
   }

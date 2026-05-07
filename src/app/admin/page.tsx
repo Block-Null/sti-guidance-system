@@ -3,11 +3,11 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 
-export default function GuidanceDashboardPage() {
+export default function AdminPage() {
   const router = useRouter()
 
   useEffect(() => {
-    router.replace("/guidance")
+    router.replace("/admin/dashboard")
   }, [router])
 
   return null

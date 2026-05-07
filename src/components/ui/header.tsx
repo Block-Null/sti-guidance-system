@@ -1,8 +1,10 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { getHomePathForRole, type AppRole } from "@/lib/roles"
+import { ensureProfileExists, getNormalizedProfileRole } from "@/lib/profile"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -40,16 +42,19 @@ const cleanMicrosoftName = (name: string) => {
 }
 
 export default function Header() {
+  const pathname = usePathname()
   const router = useRouter()
 
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
 
-  const [role, setRole] = useState<string | null>(null)
+  const [role, setRole] = useState<AppRole | null>(null)
   const [fullname, setFullname] = useState<string>("")
   const [loading, setLoading] = useState(true)
 
   const hasUnread = notifications.some((n) => !n.is_read)
+  const isStudentSection = pathname.startsWith("/student")
+  const resolvedRole = role ?? (isStudentSection ? "student" : null)
 
   /* =========================
      FETCH USER PROFILE
@@ -64,25 +69,18 @@ export default function Header() {
         return
       }
 
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("fullname, role")
-        .eq("id", userData.user.id)
-        .single()
-
-      if (error || !profile) {
-        console.error(error)
+      try {
+        const profile = await ensureProfileExists(userData.user)
+        setFullname(cleanMicrosoftName(profile.fullname ?? ""))
+        setRole(getNormalizedProfileRole(profile))
+      } catch (error) {
+        console.error("Header profile fetch error:", error)
+      } finally {
         setLoading(false)
-        return
       }
-
-      setFullname(cleanMicrosoftName(profile.fullname))
-      setRole(profile.role?.toLowerCase() || null)
-
-      setLoading(false)
     }
 
-    fetchProfile()
+    void fetchProfile()
   }, [])
 
   /* =========================
@@ -126,8 +124,16 @@ export default function Header() {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    router.push("/")
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      console.error("Logout error:", error)
+      return
+    }
+
+    router.replace("/")
+    router.refresh()
+    window.location.replace("/")
   }
 
   if (loading) return null
@@ -140,7 +146,7 @@ export default function Header() {
       ========================= */}
       <div
         className="flex items-center gap-3 cursor-pointer"
-        onClick={() => router.push("/home")}
+        onClick={() => router.push(getHomePathForRole(resolvedRole))}
       >
         <div className="bg-yellow-400 w-8 h-8 rounded-xl flex items-center justify-center">
           <span className="text-blue-900 font-bold text-xs">STI</span>
@@ -150,12 +156,12 @@ export default function Header() {
         </h1>
       </div>
 
-      {/* =========================
+        {/* =========================
          STUDENT NAV ONLY
       ========================= */}
-      {role === "student" && (
-        <nav className="hidden md:flex items-center gap-8 text-gray-600">
-          <button onClick={() => router.push("/home")} className="flex items-center gap-2 hover:text-blue-900">
+      {resolvedRole === "student" && (
+        <nav className="flex flex-wrap items-center gap-4 text-gray-600 sm:gap-6 md:gap-8">
+          <button onClick={() => router.push("/student/home")} className="flex items-center gap-2 hover:text-blue-900">
             <Home size={18} />
             Home
           </button>
@@ -165,7 +171,7 @@ export default function Header() {
             Book Appointment
           </button>
 
-          <button onClick={() => router.push("/appointments")} className="flex items-center gap-2 hover:text-blue-900">
+          <button onClick={() => router.push("/student/appointments")} className="flex items-center gap-2 hover:text-blue-900">
             <Clock size={18} />
             Appointments
           </button>
@@ -232,17 +238,16 @@ export default function Header() {
             <DropdownMenuLabel>{fullname}</DropdownMenuLabel>
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem onClick={() => router.push("/profile")}>
-              Profile
-            </DropdownMenuItem>
+            {resolvedRole === "student" ? (
+              <>
+                <DropdownMenuItem onClick={() => router.push("/student/profile")}>
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
 
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
-              Settings
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            <DropdownMenuItem onClick={signOut} className="text-red-500">
+            <DropdownMenuItem onClick={() => void signOut()} className="text-red-500">
               Logout
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -251,7 +256,7 @@ export default function Header() {
       </div>
 
       {/* BOOKING MODAL */}
-      {role === "student" && (
+      {resolvedRole === "student" && (
         <BookingDialog open={open} setOpen={setOpen} />
       )}
     </div>

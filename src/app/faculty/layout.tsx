@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
 import Header from "@/components/ui/header"
+import { supabase } from "@/lib/supabase"
 import { getHomePathForRole, normalizeRole } from "@/lib/roles"
 
-export default function GuidanceLayout({
+export default function FacultyLayout({
   children,
 }: {
   children: React.ReactNode
@@ -31,7 +31,7 @@ export default function GuidanceLayout({
 
       const role = normalizeRole(profile?.role)
 
-      if (role !== "guidance") {
+      if (role !== "faculty") {
         router.push(getHomePathForRole(role))
         return
       }
@@ -39,29 +39,28 @@ export default function GuidanceLayout({
       setLoading(false)
     }
 
-    checkUser()
+    void checkUser()
 
-    const { data: listener } =
-      supabase.auth.onAuthStateChange(
-        async (_, session) => {
-          if (!session?.user) {
-            router.push("/")
-            return
-          }
-
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", session.user.id)
-            .maybeSingle()
-
-          const role = normalizeRole(profile?.role)
-
-          if (role !== "guidance") {
-            router.push(getHomePathForRole(role))
-          }
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (_, session) => {
+        if (!session?.user) {
+          router.push("/")
+          return
         }
-      )
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .maybeSingle()
+
+        const role = normalizeRole(profile?.role)
+
+        if (role !== "faculty") {
+          router.push(getHomePathForRole(role))
+        }
+      }
+    )
 
     return () => {
       listener.subscription.unsubscribe()
