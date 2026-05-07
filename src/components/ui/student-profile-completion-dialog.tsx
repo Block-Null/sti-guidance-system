@@ -11,8 +11,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { postJson } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
-import { supabase } from "@/lib/supabase"
+import { useSubmissionGuard } from "@/lib/use-submission-guard"
 
 type StudentProfileFields = {
   birthdate: string | null
@@ -25,7 +26,6 @@ type StudentProfileFields = {
 type StudentProfileCompletionDialogProps = {
   initialValues: StudentProfileFields
   open: boolean
-  userId: string
   onCompleted: () => void
 }
 
@@ -52,7 +52,6 @@ function isBlank(value: string | null | undefined) {
 export default function StudentProfileCompletionDialog({
   initialValues,
   open,
-  userId,
   onCompleted,
 }: StudentProfileCompletionDialogProps) {
 
@@ -61,7 +60,7 @@ export default function StudentProfileCompletionDialog({
   const [birthdate, setBirthdate] = useState(initialValues.birthdate ?? "")
   const [parentPhone, setParentPhone] = useState(initialValues.parentphone ?? "")
   const [course, setCourse] = useState(initialValues.course ?? "")
-  const [saving, setSaving] = useState(false)
+  const { run, submitting: saving } = useSubmissionGuard()
   const [error, setError] = useState("")
 
   const saveProfile = async () => {
@@ -88,38 +87,25 @@ export default function StudentProfileCompletionDialog({
       return
     }
 
-    setSaving(true)
-
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .update({
+    await run(async () => {
+      const response = await postJson<{ profileId: string; success: true }>(
+        "/api/profiles/complete",
+        {
           birthdate,
           course: course.trim(),
           gender: gender.trim(),
-          parentphone: parentPhone.trim(),
+          parentPhone: parentPhone.trim(),
           phone: phone.trim(),
-        })
-        .eq("id", userId)
-        .select()
-        .single()
+        }
+      )
 
-      if (error) {
-        throw error
-      }
-
-      if (!data) {
-        throw new Error("Profile update failed. No row returned.")
+      if (!response.ok) {
+        setError(response.error)
+        return
       }
 
       onCompleted()
-
-    } catch (err: any) {
-      console.error("Save profile error:", err)
-      setError(err.message || "Failed to save profile.")
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   return (

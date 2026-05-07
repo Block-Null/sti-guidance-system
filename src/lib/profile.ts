@@ -67,7 +67,7 @@ export async function ensureProfileExists(user: User) {
 
   const { data: insertedProfile, error: insertError } = await supabase
     .from("profiles")
-    .insert(profilePayload)
+    .upsert(profilePayload, { onConflict: "id" })
     .select("role, fullname, email, avatar_url, gender, phone, birthdate, parentphone, course")
     .single<ProfileRecord>()
 

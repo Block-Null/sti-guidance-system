@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
+import { ensureProfileExists } from "@/lib/profile"
 
 type Profile = {
   avatar_url: string | null
@@ -34,42 +35,6 @@ export default function ProfilePage() {
   const [error, setError] = useState("")
 
   /* =========================
-     SAFE PROFILE HANDLER
-  ========================= */
-  const getOrCreateProfile = async (user: any) => {
-
-    // Try fetch
-    let { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single()
-
-    if (data) return data
-
-    // If not exists → create
-    const fullName = user.user_metadata?.full_name || ""
-    const email = user.email
-
-    const { data: newProfile, error: insertError } = await supabase
-      .from("profiles")
-      .insert({
-        id: user.id,
-        email,
-        fullname: fullName,
-        role: "student",
-      })
-      .select()
-      .single()
-
-    if (insertError) {
-      throw insertError
-    }
-
-    return newProfile
-  }
-
-  /* =========================
      FETCH PROFILE
   ========================= */
   useEffect(() => {
@@ -85,7 +50,7 @@ export default function ProfilePage() {
           return
         }
 
-        const profileData = await getOrCreateProfile(authData.user)
+        const profileData = await ensureProfileExists(authData.user)
 
         if (!profileData) {
           throw new Error("Profile not found")
@@ -93,9 +58,11 @@ export default function ProfilePage() {
 
         setProfile(profileData)
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Profile fetch error:", err)
-        setError(err.message || "Unable to load your profile.")
+        setError(
+          err instanceof Error ? err.message : "Unable to load your profile."
+        )
       } finally {
         setLoading(false)
       }

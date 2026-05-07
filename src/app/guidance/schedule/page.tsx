@@ -6,7 +6,9 @@ import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { createClientRequestId, postJson } from "@/lib/api-client"
 import { supabase } from "@/lib/supabase"
+import { useSubmissionGuard } from "@/lib/use-submission-guard"
 
 type ScheduleItem = {
   id: string
@@ -122,7 +124,7 @@ export default function Page() {
   const [title, setTitle] = useState("")
   const [selectedSchedules, setSelectedSchedules] = useState<ScheduleItem[]>([])
   const [loadingSchedules, setLoadingSchedules] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
+  const { run, submitting } = useSubmissionGuard()
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -176,10 +178,44 @@ export default function Page() {
       return
     }
 
-    void fetchSelectedSchedules(selectedDateValue)
+    let active = true
+
+    const loadSchedules = async () => {
+      setLoadingSchedules(true)
+
+      const { data, error: fetchError } = await supabase
+        .from("schedule")
+        .select("id, schedule_date, start_time, end_time, title, type")
+        .eq("schedule_date", selectedDateValue)
+        .order("start_time", { ascending: true })
+
+      if (!active) {
+        return
+      }
+
+      if (fetchError) {
+        setError(fetchError.message)
+        setSelectedSchedules([])
+        setLoadingSchedules(false)
+        return
+      }
+
+      setSelectedSchedules((data as ScheduleItem[]) ?? [])
+      setLoadingSchedules(false)
+    }
+
+    void loadSchedules()
+
+    return () => {
+      active = false
+    }
   }, [selectedDateValue])
 
   const addSchedule = async () => {
+    if (submitting) {
+      return
+    }
+
     setError("")
     setSuccess("")
 
@@ -211,30 +247,33 @@ export default function Page() {
       return
     }
 
-    setSubmitting(true)
-
-    const { error: insertError } = await supabase.from("schedule").insert([
-      {
-        schedule_date: selectedDateValue,
-        start_time: startTime,
-        end_time: endTime,
+    await run(async () => {
+      const response = await postJson<{
+        ignored: boolean
+        scheduleId: string | null
+      }>("/api/schedules", {
+        clientRequestId: createClientRequestId(),
+        endTime,
+        scheduleDate: selectedDateValue,
+        startTime,
         title: title.trim(),
-        type: "event",
-      },
-    ])
+      })
 
-    setSubmitting(false)
+      if (!response.ok) {
+        setError(response.error)
+        return
+      }
 
-    if (insertError) {
-      setError(insertError.message)
-      return
-    }
-
-    setSuccess("Schedule added successfully.")
-    setStartTime("")
-    setEndTime("")
-    setTitle("")
-    await fetchSelectedSchedules(selectedDateValue)
+      setSuccess(
+        response.data.ignored
+          ? "That schedule entry was already submitted."
+          : "Schedule added successfully."
+      )
+      setStartTime("")
+      setEndTime("")
+      setTitle("")
+      await fetchSelectedSchedules(selectedDateValue)
+    })
   }
 
   const deleteSchedule = async (scheduleId: string) => {

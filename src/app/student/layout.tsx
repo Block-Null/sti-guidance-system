@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import Header from "@/components/ui/header"
 import StudentProfileCompletionDialog from "@/components/ui/student-profile-completion-dialog"
 import { getHomePathForRole } from "@/lib/roles"
+import { ensureProfileExists } from "@/lib/profile"
 
 type StudentProfile = {
   birthdate: string | null
@@ -43,45 +44,6 @@ export default function StudentLayout({
   })
 
   /* =========================
-     SAFE PROFILE FETCH
-  ========================= */
-  const getOrCreateProfile = async (user: any) => {
-
-    // 1. Try fetch
-    let { data: profile, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single()
-
-    // 2. If not exists → create
-    if (!profile) {
-      const fullName = user.user_metadata?.full_name || ""
-      const email = user.email
-
-      const { data: newProfile, error: insertError } = await supabase
-        .from("profiles")
-        .insert({
-          id: user.id,
-          email,
-          fullname: fullName,
-          role: "student" // default fallback
-        })
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error("Profile insert error:", insertError)
-        return null
-      }
-
-      profile = newProfile
-    }
-
-    return profile
-  }
-
-  /* =========================
      AUTH + ROLE CHECK
   ========================= */
   useEffect(() => {
@@ -96,7 +58,7 @@ export default function StudentLayout({
           return
         }
 
-        const profile = await getOrCreateProfile(data.user)
+        const profile = await ensureProfileExists(data.user)
 
         if (!profile) {
           console.error("Profile missing")
@@ -142,7 +104,7 @@ export default function StudentLayout({
           return
         }
 
-        const profile = await getOrCreateProfile(session.user)
+        const profile = await ensureProfileExists(session.user)
 
         if (!profile) return
 
@@ -193,7 +155,6 @@ export default function StudentLayout({
         <StudentProfileCompletionDialog
           initialValues={profileValues}
           open={profileModalOpen}
-          userId={userId}
           onCompleted={() => setProfileModalOpen(false)}
         />
       )}

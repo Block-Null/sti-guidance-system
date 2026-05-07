@@ -1,12 +1,15 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useMemo, useState, type ChangeEvent } from "react"
 import GuidanceSidebar from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { createClientRequestId, postJson } from "@/lib/api-client"
 import { supabase } from "@/lib/supabase"
+import { useSubmissionGuard } from "@/lib/use-submission-guard"
 
 type Announcement = {
   id: string
@@ -50,7 +53,7 @@ export default function Page() {
   const [imageName, setImageName] = useState("")
   const [duration, setDuration] = useState(1)
   const [posts, setPosts] = useState<Announcement[]>([])
-  const [submitting, setSubmitting] = useState(false)
+  const { run, submitting } = useSubmissionGuard()
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
 
@@ -59,6 +62,34 @@ export default function Page() {
     () => addDays(postedAt, Math.max(duration, 1)),
     [duration, postedAt]
   )
+
+  useEffect(() => {
+    let active = true
+
+    const loadPosts = async () => {
+      const { data, error: fetchError } = await supabase
+        .from("announcements")
+        .select("*")
+        .order("date_posted", { ascending: false })
+
+      if (!active) {
+        return
+      }
+
+      if (fetchError) {
+        setError(fetchError.message)
+        return
+      }
+
+      setPosts((data as Announcement[]) || [])
+    }
+
+    void loadPosts()
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   const fetchPosts = async () => {
     const { data, error: fetchError } = await supabase
@@ -73,10 +104,6 @@ export default function Page() {
 
     setPosts((data as Announcement[]) || [])
   }
-
-  useEffect(() => {
-    void fetchPosts()
-  }, [])
 
   const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -116,6 +143,10 @@ export default function Page() {
   }
 
   const createPost = async () => {
+    if (submitting) {
+      return
+    }
+
     setError("")
     setSuccess("")
 
@@ -129,31 +160,35 @@ export default function Page() {
       return
     }
 
-    setSubmitting(true)
-
-    const { error: insertError } = await supabase.from("announcements").insert([
-      {
-        title: title.trim(),
+    await run(async () => {
+      const response = await postJson<{
+        announcementId: string | null
+        ignored: boolean
+      }>("/api/announcements", {
+        clientRequestId: createClientRequestId(),
         content: content.trim(),
-        image: imageDataUrl,
         duration,
-      },
-    ])
+        image: imageDataUrl,
+        title: title.trim(),
+      })
 
-    setSubmitting(false)
+      if (!response.ok) {
+        setError(response.error)
+        return
+      }
 
-    if (insertError) {
-      setError(insertError.message)
-      return
-    }
-
-    setSuccess("Announcement created successfully.")
-    setTitle("")
-    setContent("")
-    setImageDataUrl(null)
-    setImageName("")
-    setDuration(1)
-    await fetchPosts()
+      setSuccess(
+        response.data.ignored
+          ? "That announcement was already submitted."
+          : "Announcement created successfully."
+      )
+      setTitle("")
+      setContent("")
+      setImageDataUrl(null)
+      setImageName("")
+      setDuration(1)
+      await fetchPosts()
+    })
   }
 
   return (
@@ -209,11 +244,15 @@ export default function Page() {
                   <p className="text-sm text-slate-600">Selected file: {imageName}</p>
                 ) : null}
                 {imageDataUrl ? (
-                  <img
-                    src={imageDataUrl}
-                    alt="Announcement preview"
-                    className="h-40 w-full rounded-lg border object-cover"
-                  />
+                  <div className="relative h-40 w-full overflow-hidden rounded-lg border">
+                    <Image
+                      src={imageDataUrl}
+                      alt="Announcement preview"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
                 ) : null}
               </div>
 
@@ -286,11 +325,15 @@ export default function Page() {
                         <p className="text-sm text-slate-600">{post.content}</p>
 
                         {post.image ? (
-                          <img
-                            src={post.image}
-                            alt={post.title}
-                            className="h-48 w-full rounded-lg border object-cover"
-                          />
+                          <div className="relative h-48 w-full overflow-hidden rounded-lg border">
+                            <Image
+                              src={post.image}
+                              alt={post.title}
+                              fill
+                              className="object-cover"
+                              unoptimized
+                            />
+                          </div>
                         ) : null}
 
                         <div className="text-xs text-slate-500">

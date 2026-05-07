@@ -1,8 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
+import { createClientRequestId, postJson } from "@/lib/api-client"
+import { useSubmissionGuard } from "@/lib/use-submission-guard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -92,12 +94,11 @@ export default function BookingDialog({ open, setOpen }: Props) {
   const [appointmentMonth, setAppointmentMonth] = useState("")
   const [appointmentDay, setAppointmentDay] = useState("")
   const [appointmentTime, setAppointmentTime] = useState("")
-  const [submitting, setSubmitting] = useState(false)
+  const { run, submitting } = useSubmissionGuard()
 
-  const now = useMemo(() => new Date(), [open])
+  const now = new Date()
   const currentYear = now.getFullYear()
   const minDate = formatDateForInput(now)
-  const maxDate = formatDateForInput(new Date(currentYear, 11, 31))
   const maxDayForSelectedMonth = appointmentMonth
     ? getDaysInMonth(currentYear, Number(appointmentMonth))
     : 31
@@ -118,6 +119,10 @@ export default function BookingDialog({ open, setOpen }: Props) {
   }
 
   const handleBookAppointment = async () => {
+    if (submitting) {
+      return
+    }
+
     if (!reason.trim() || !appointmentDate || !appointmentTime) {
       toast.error("Please fill in the required fields.")
       return
@@ -147,28 +152,31 @@ export default function BookingDialog({ open, setOpen }: Props) {
       return
     }
 
-    setSubmitting(true)
-
-    const { error } = await supabase.from("appointments").insert([
-      {
-        student_id: userData.user.id,
-        reason: reason.trim(),
+    await run(async () => {
+      const response = await postJson<{
+        appointmentId: string | null
+        ignored: boolean
+        status: string
+      }>("/api/appointments", {
+        appointmentDate: selectedDateTime.toISOString(),
+        clientRequestId: createClientRequestId(),
         details: details.trim(),
-        appointment_date: selectedDateTime.toISOString(),
-      },
-    ])
+        reason: reason.trim(),
+      })
 
-    setSubmitting(false)
+      if (!response.ok) {
+        toast.error(response.error)
+        return
+      }
 
-    if (error) {
-      console.error(error)
-      toast.error("Error booking appointment.")
-      return
-    }
-
-    toast.success("Appointment successfully booked.")
-    resetForm()
-    setOpen(false)
+      toast.success(
+        response.data.ignored
+          ? "That appointment request was already submitted."
+          : "Appointment successfully booked."
+      )
+      resetForm()
+      setOpen(false)
+    })
   }
 
   return (
