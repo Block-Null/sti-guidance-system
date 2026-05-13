@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Header from "@/components/ui/header"
 import StudentProfileCompletionDialog from "@/components/ui/student-profile-completion-dialog"
-import { getHomePathForRole } from "@/lib/roles"
+import { getHomePathForRole, normalizeRole, type AppRole } from "@/lib/roles"
 import { ensureProfileExists } from "@/lib/profile"
 
 type StudentProfile = {
@@ -66,7 +66,7 @@ export default function StudentLayout({
           return
         }
 
-        const role = (profile.role || "student").toLowerCase()
+        const role: AppRole = normalizeRole(profile.role) ?? "student"
 
         if (role !== "student") {
           router.push(getHomePathForRole(role))
@@ -108,7 +108,7 @@ export default function StudentLayout({
 
         if (!profile) return
 
-        const role = (profile.role || "student").toLowerCase()
+        const role: AppRole = normalizeRole(profile.role) ?? "student"
 
         if (role !== "student") {
           router.push(getHomePathForRole(role))
